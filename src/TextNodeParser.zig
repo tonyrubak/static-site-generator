@@ -1,6 +1,4 @@
 const std = @import("std");
-const LeafNode = @import("LeafNode.zig").LeafNode;
-const Node = @import("Node.zig").Node;
 const TextNode = @import("TextNode.zig").TextNode;
 const TextType = @import("TextNode.zig").TextType;
 
