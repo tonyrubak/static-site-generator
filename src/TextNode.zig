@@ -12,10 +12,10 @@ pub const TextNode = struct {
         writer: anytype,
     ) !void {
         try writer.writeAll("TextNode(");
-        _ = try writer.print("{s}, ", .{self.text});
-        _ = try writer.print("{s}", .{@tagName(self.textType)});
+        try writer.print("{s}, ", .{self.text});
+        try writer.print("{s}", .{@tagName(self.textType)});
         if (self.url.len > 0) {
-            _ = try writer.print(", {s})", .{self.url});
+            try writer.print(", {s})", .{self.url});
         } else {
             try writer.writeAll(")");
         }
