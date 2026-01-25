@@ -142,23 +142,47 @@ pub const TextNode = struct {
                     }
                 },
                 '[' => {
-                    if (in_tag == null) {
-                        try TextNode.emit(allocator, &list, self.text[current..index], .text, null);
+                    if (in_tag != null) return error.InvalidMarkdown;
+
+                    try TextNode.emit(allocator, &list, self.text[current..index], .text, null);
+                    index += 1;
+                    current = index;
+                    index += std.mem.indexOf(u8, self.text[current..], "]") orelse return error.InvalidMarkdown;
+                    const value = switch (peek(self.text, index, '(')) {
+                        true => self.text[current..index],
+                        false => return error.InvalidMarkdown,
+                    };
+                    index += 2;
+                    current = index;
+                    index += std.mem.indexOf(u8, self.text[current..], ")") orelse return error.InvalidMarkdown;
+                    const url = self.text[current..index];
+                    try emit(allocator, &list, value, .link, url);
+                    index += 1;
+                    current = index;
+                },
+                '!' => {
+                    if (!peek(self.text, index, '[')) {
                         index += 1;
-                        current = index;
-                        index += std.mem.indexOf(u8, self.text[current..], "]") orelse return error.InvalidMarkdown;
-                        const value = switch (peek(self.text, index, '(')) {
-                            true => self.text[current..index],
-                            false => return error.InvalidMarkdown,
-                        };
-                        index += 2;
-                        current = index;
-                        index += std.mem.indexOf(u8, self.text[current..], ")") orelse return error.InvalidMarkdown;
-                        const url = self.text[current..index];
-                        try emit(allocator, &list, value, .link, url);
-                        index += 1;
-                        current = index;
+                        continue;
                     }
+
+                    if (in_tag != null) return error.InvalidMarkdown;
+
+                    try TextNode.emit(allocator, &list, self.text[current..index], .text, null);
+                    index += 2;
+                    current = index;
+                    index += std.mem.indexOf(u8, self.text[current..], "]") orelse return error.InvalidMarkdown;
+                    const value = switch (peek(self.text, index, '(')) {
+                        true => self.text[current..index],
+                        false => return error.InvalidMarkdown,
+                    };
+                    index += 2;
+                    current = index;
+                    index += std.mem.indexOf(u8, self.text[current..], ")") orelse return error.InvalidMarkdown;
+                    const url = self.text[current..index];
+                    try emit(allocator, &list, value, .image, url);
+                    index += 1;
+                    current = index;
                 },
                 else => index += 1,
             }
@@ -300,6 +324,27 @@ test "link embedded in text" {
     try std.testing.expectEqualStrings("just some ", nodes[0].text);
     try std.testing.expectEqualStrings("click me", nodes[1].text);
     try std.testing.expectEqualStrings("https://crimsonhexagon.us", nodes[1].url);
+    try std.testing.expectEqualStrings(" text", nodes[2].text);
+}
+
+test "image embedded in text" {
+    const gpa = std.testing.allocator;
+    const node = TextNode{
+        .text = "just some ![an image](https://crimsonhexagon.us/image.png) text",
+        .textType = TextType.text,
+        .url = "",
+    };
+
+    const nodes = try node.splitNode(gpa);
+    defer gpa.free(nodes);
+
+    try std.testing.expect(nodes.len == 3);
+    try std.testing.expect(nodes[0].textType == .text);
+    try std.testing.expect(nodes[1].textType == .image);
+    try std.testing.expect(nodes[2].textType == .text);
+    try std.testing.expectEqualStrings("just some ", nodes[0].text);
+    try std.testing.expectEqualStrings("an image", nodes[1].text);
+    try std.testing.expectEqualStrings("https://crimsonhexagon.us/image.png", nodes[1].url);
     try std.testing.expectEqualStrings(" text", nodes[2].text);
 }
 
