@@ -12,4 +12,5 @@ test {
     _ = @import("TextNode.zig");
     _ = @import("HtmlNode.zig");
     _ = @import("LeafNode.zig");
+    _ = @import("ParentNode.zig");
 }
