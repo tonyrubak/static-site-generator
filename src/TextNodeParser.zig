@@ -11,15 +11,15 @@ pub const TextNodeParser = struct {
     url: []const u8,
 
     pub fn init(
-        textNode: *const TextNode,
+        textNode: TextNode,
     ) !TextNodeParser {
         const self = TextNodeParser{
             .index = 0,
             .current = 0,
             .in_tag = null,
-            .text = textNode.*.text,
-            .textNodeType = textNode.*.textType,
-            .url = textNode.*.url,
+            .text = textNode.text,
+            .textNodeType = textNode.textType,
+            .url = textNode.url,
         };
 
         return self;
@@ -168,7 +168,61 @@ pub const TextNodeParser = struct {
 
         return list.toOwnedSlice(allocator);
     }
+
+    pub fn extract(self: *TextNodeParser, allocator: std.mem.Allocator, textType: TextType) ![]struct { []const u8, []const u8 } {
+        if (textType != .image and textType != .link) return error.NotSupported;
+        const nodes = try self.parse(allocator);
+        defer allocator.free(nodes);
+        var list = std.ArrayList(struct { []const u8, []const u8 }).empty;
+        errdefer list.deinit(allocator);
+
+        for (nodes) |node| {
+            if (node.textType == textType) {
+                try list.append(allocator, .{ node.text, node.url });
+            }
+        }
+
+        return list.toOwnedSlice(allocator);
+    }
 };
+
+test "extract images from markdown" {
+    const gpa = std.testing.allocator;
+    const node = TextNode{
+        .text = "This is text with a ![rick roll](https://i.imgur.com/aKaOqIh.gif) and ![obi wan](https://i.imgur.com/fJRm4Vk.jpeg)",
+        .textType = TextType.text,
+        .url = "",
+    };
+
+    var parser = try TextNodeParser.init(node);
+    const images = try parser.extract(gpa, .image);
+    defer gpa.free(images);
+
+    try std.testing.expect(images.len == 2);
+    try std.testing.expectEqualStrings("rick roll", images[0][0]);
+    try std.testing.expectEqualStrings("https://i.imgur.com/aKaOqIh.gif", images[0][1]);
+    try std.testing.expectEqualStrings("obi wan", images[1][0]);
+    try std.testing.expectEqualStrings("https://i.imgur.com/fJRm4Vk.jpeg", images[1][1]);
+}
+
+test "extract links from markdown" {
+    const gpa = std.testing.allocator;
+    const node = TextNode{
+        .text = "This is text with a link [to boot dev](https://www.boot.dev) and [to youtube](https://www.youtube.com/@bootdotdev)",
+        .textType = TextType.text,
+        .url = "",
+    };
+
+    var parser = try TextNodeParser.init(node);
+    const images = try parser.extract(gpa, .link);
+    defer gpa.free(images);
+
+    try std.testing.expect(images.len == 2);
+    try std.testing.expectEqualStrings("to boot dev", images[0][0]);
+    try std.testing.expectEqualStrings("https://www.boot.dev", images[0][1]);
+    try std.testing.expectEqualStrings("to youtube", images[1][0]);
+    try std.testing.expectEqualStrings("https://www.youtube.com/@bootdotdev", images[1][1]);
+}
 
 test "tag ends at end of line - 1" {
     const gpa = std.testing.allocator;
@@ -178,7 +232,7 @@ test "tag ends at end of line - 1" {
         .url = "",
     };
 
-    var parser = try TextNodeParser.init(&node);
+    var parser = try TextNodeParser.init(node);
 
     const nodes = try parser.parse(gpa);
     defer gpa.free(nodes);
@@ -197,7 +251,7 @@ test "tag ends at end of line" {
         .url = "",
     };
 
-    var parser = try TextNodeParser.init(&node);
+    var parser = try TextNodeParser.init(node);
 
     const nodes = try parser.parse(gpa);
     defer gpa.free(nodes);
@@ -215,7 +269,7 @@ test "bold embedded in text" {
         .url = "",
     };
 
-    var parser = try TextNodeParser.init(&node);
+    var parser = try TextNodeParser.init(node);
 
     const nodes = try parser.parse(gpa);
     defer gpa.free(nodes);
@@ -234,7 +288,7 @@ test "unterminated bold tag errors" {
         .url = "",
     };
 
-    var parser = try TextNodeParser.init(&node);
+    var parser = try TextNodeParser.init(node);
     const nodes = parser.parse(gpa);
 
     try std.testing.expectError(error.InvalidMarkdown, nodes);
@@ -248,7 +302,7 @@ test "italic embedded in text" {
         .url = "",
     };
 
-    var parser = try TextNodeParser.init(&node);
+    var parser = try TextNodeParser.init(node);
     const nodes = try parser.parse(gpa);
     defer gpa.free(nodes);
 
@@ -266,7 +320,7 @@ test "unterminated italic tag errors" {
         .url = "",
     };
 
-    var parser = try TextNodeParser.init(&node);
+    var parser = try TextNodeParser.init(node);
     const nodes = parser.parse(gpa);
 
     try std.testing.expectError(error.InvalidMarkdown, nodes);
@@ -280,7 +334,7 @@ test "code embedded in text" {
         .url = "",
     };
 
-    var parser = try TextNodeParser.init(&node);
+    var parser = try TextNodeParser.init(node);
     const nodes = try parser.parse(gpa);
     defer gpa.free(nodes);
 
@@ -298,7 +352,7 @@ test "unterminated code tag errors" {
         .url = "",
     };
 
-    var parser = try TextNodeParser.init(&node);
+    var parser = try TextNodeParser.init(node);
     const nodes = parser.parse(gpa);
 
     try std.testing.expectError(error.InvalidMarkdown, nodes);
@@ -312,7 +366,7 @@ test "link embedded in text" {
         .url = "",
     };
 
-    var parser = try TextNodeParser.init(&node);
+    var parser = try TextNodeParser.init(node);
     const nodes = try parser.parse(gpa);
     defer gpa.free(nodes);
 
@@ -334,7 +388,7 @@ test "image embedded in text" {
         .url = "",
     };
 
-    var parser = try TextNodeParser.init(&node);
+    var parser = try TextNodeParser.init(node);
     const nodes = try parser.parse(gpa);
     defer gpa.free(nodes);
 
