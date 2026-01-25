@@ -192,13 +192,30 @@ pub const TextNode = struct {
             return error.InvalidMarkdown;
         }
 
-        if (current < self.text.len - 1) {
+        if (current < self.text.len) {
             try TextNode.emit(allocator, &list, self.text[current..], .text, null);
         }
 
         return list.toOwnedSlice(allocator);
     }
 };
+
+test "tag ends at end of line - 1" {
+    const gpa = std.testing.allocator;
+    const node = TextNode{
+        .text = "just some text, **bold**!",
+        .textType = TextType.text,
+        .url = "",
+    };
+
+    const nodes = try node.splitNode(gpa);
+    defer gpa.free(nodes);
+
+    try std.testing.expect(nodes.len == 3);
+    try std.testing.expect(nodes[0].textType == .text);
+    try std.testing.expect(nodes[1].textType == .bold);
+    try std.testing.expect(nodes[2].textType == .text);
+}
 
 test "tag ends at end of line" {
     const gpa = std.testing.allocator;
