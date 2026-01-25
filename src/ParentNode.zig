@@ -82,7 +82,7 @@ test "test parent node with zero children" {
 test "test parent node with one child" {
     const LeafNode = @import("LeafNode.zig").LeafNode;
     const gpa = std.testing.allocator;
-    var childNode = try LeafNode.init(gpa, "p", "Hello, world!");
+    var childNode = try LeafNode.init(gpa, "p", "Hello, world!", false);
     defer childNode.deinit();
 
     var parentNode = try ParentNode.init(gpa, "div", &[_]Node{.{ .leaf = childNode }});
@@ -96,7 +96,7 @@ test "test parent node with one child" {
 test "test parent node with one grandchild" {
     const LeafNode = @import("LeafNode.zig").LeafNode;
     const gpa = std.testing.allocator;
-    var childNode = try LeafNode.init(gpa, "p", "Hello, world!");
+    var childNode = try LeafNode.init(gpa, "p", "Hello, world!", false);
     defer childNode.deinit();
 
     var parentNode = try ParentNode.init(gpa, "div", &[_]Node{.{ .leaf = childNode }});
@@ -113,10 +113,10 @@ test "test parent node with one grandchild" {
 test "test parent node with two children" {
     const LeafNode = @import("LeafNode.zig").LeafNode;
     const gpa = std.testing.allocator;
-    var childNode = try LeafNode.init(gpa, "p", "Hello, world!");
+    var childNode = try LeafNode.init(gpa, "p", "Hello, world!", false);
     defer childNode.deinit();
 
-    var childNode2 = try LeafNode.init(gpa, "h1", "Goodbye, world!");
+    var childNode2 = try LeafNode.init(gpa, "h1", "Goodbye, world!", false);
     defer childNode2.deinit();
 
     var parentNode = try ParentNode.init(gpa, "div", &[_]Node{ .{ .leaf = childNode }, .{ .leaf = childNode2 } });

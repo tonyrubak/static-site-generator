@@ -1,19 +1,23 @@
 const std = @import("std");
+const NodeError = @import("Node.zig").NodeError;
 
 pub const LeafNode = struct {
     tag: []const u8,
     value: []const u8,
     props: std.StringHashMap([]const u8),
+    is_void: bool,
 
     pub fn init(
         allocator: std.mem.Allocator,
         tag: []const u8,
         value: []const u8,
+        is_void: bool,
     ) !LeafNode {
         const self = LeafNode{
             .tag = tag,
             .value = value,
             .props = std.StringHashMap([]const u8).init(allocator),
+            .is_void = is_void,
         };
 
         return self;
@@ -44,6 +48,9 @@ pub const LeafNode = struct {
         self: LeafNode,
         allocator: std.mem.Allocator,
     ) ![]u8 {
+        if (self.is_void and self.value.len > 0) {
+            return NodeError.VoidElementHasContent;
+        }
         var list = std.ArrayList(u8).empty;
         errdefer list.deinit(allocator);
 
@@ -65,7 +72,7 @@ pub const LeafNode = struct {
 
 test "test leaf node with no properties" {
     const gpa = std.testing.allocator;
-    var node = try LeafNode.init(gpa, "p", "Hello, world!");
+    var node = try LeafNode.init(gpa, "p", "Hello, world!", false);
     defer node.deinit();
 
     const result = try node.toHtml(gpa);
@@ -75,7 +82,7 @@ test "test leaf node with no properties" {
 
 test "test leaf node with 1 property" {
     const gpa = std.testing.allocator;
-    var node = try LeafNode.init(gpa, "h1", "Hello, world!");
+    var node = try LeafNode.init(gpa, "h1", "Hello, world!", false);
     defer node.deinit();
 
     try node.props.put("class", "text-danger");
@@ -87,7 +94,7 @@ test "test leaf node with 1 property" {
 
 test "test leaf node with 2 properties" {
     const gpa = std.testing.allocator;
-    var node = try LeafNode.init(gpa, "h1", "Hello, world!");
+    var node = try LeafNode.init(gpa, "h1", "Hello, world!", false);
     defer node.deinit();
 
     try node.props.put("class", "text-danger");
@@ -96,4 +103,13 @@ test "test leaf node with 2 properties" {
     const result = try node.toHtml(gpa);
     defer gpa.free(result);
     try std.testing.expectEqualStrings("<h1 class=\"text-danger\" other=\"another-property\">Hello, world!</h1>", result);
+}
+
+test "test void leaf node with value should error" {
+    const gpa = std.testing.allocator;
+    var node = try LeafNode.init(gpa, "img", "Hello, world!", true);
+    defer node.deinit();
+
+    const result = node.toHtml(gpa);
+    try std.testing.expectError(NodeError.VoidElementHasContent, result);
 }
