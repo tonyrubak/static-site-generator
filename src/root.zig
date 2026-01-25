@@ -7,10 +7,12 @@ pub const LeafNode = @import("LeafNode.zig").LeafNode;
 pub const ParentNode = @import("ParentNode.zig").ParentNode;
 pub const Node = @import("Node.zig").Node;
 pub const NodeError = @import("Node.zig").NodeError;
+pub const TextNodeParser = @import("TextNodeParser.zig").TextNodeParser;
 
 test {
     _ = @import("TextNode.zig");
     _ = @import("HtmlNode.zig");
     _ = @import("LeafNode.zig");
     _ = @import("ParentNode.zig");
+    _ = @import("TextNodeParser.zig");
 }
