@@ -186,6 +186,21 @@ pub const TextNodeParser = struct {
     }
 };
 
+test "the whole thing" {
+    const gpa = std.testing.allocator;
+    const node = TextNode{
+        .text = "This is **text** with an _italic_ word and a `code block` and an ![obi wan image](https://i.imgur.com/fJRm4Vk.jpeg) and a [link](https://boot.dev)",
+        .textType = TextType.text,
+        .url = "",
+    };
+
+    var parser = try TextNodeParser.init(node);
+    const images = try parser.parse(gpa);
+    defer gpa.free(images);
+
+    try std.testing.expect(images.len == 10);
+}
+
 test "extract images from markdown" {
     const gpa = std.testing.allocator;
     const node = TextNode{
