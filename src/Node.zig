@@ -15,6 +15,13 @@ pub const Node = union(enum) {
             .html => @panic("HTML nodes are abstract and cannot be converted to HTML"),
         };
     }
+
+    pub fn deinit(self: *Node) void {
+        return switch (self.*) {
+            .leaf => |*leaf| leaf.deinit(),
+            else => {},
+        };
+    }
 };
 
 pub const NodeError = error{

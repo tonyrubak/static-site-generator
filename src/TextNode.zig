@@ -1,6 +1,7 @@
 const std = @import("std");
 const LeafNode = @import("LeafNode.zig").LeafNode;
 const Node = @import("Node.zig").Node;
+const ParentNode = @import("ParentNode.zig").ParentNode;
 
 pub const TextType = enum { text, bold, italic, code, link, image };
 
@@ -27,21 +28,25 @@ pub const TextNode = struct {
         self: TextNode,
         allocator: std.mem.Allocator,
     ) ![]u8 {
-        var node = switch (self.textType) {
-            .text => try LeafNode.init(allocator, "", self.text, false),
-            .bold => try LeafNode.init(allocator, "b", self.text, false),
-            .italic => try LeafNode.init(allocator, "i", self.text, false),
-            .code => try LeafNode.init(allocator, "code", self.text, false),
+        var node: Node = switch (self.textType) {
+            .text => .{ .leaf = try LeafNode.init(allocator, "", self.text, false) },
+            .bold => .{ .leaf = try LeafNode.init(allocator, "b", self.text, false) },
+            .italic => .{ .leaf = try LeafNode.init(allocator, "i", self.text, false) },
+            .code => codeBlk: {
+                const child = try LeafNode.init(allocator, "code", self.text, false);
+                const tmp = try ParentNode.init(allocator, "pre", &[_]Node{.{ .leaf = child }});
+                break :codeBlk .{ .parent = tmp };
+            },
             .link => linkBlk: {
                 var tmp = try LeafNode.init(allocator, "a", self.text, false);
                 try tmp.props.put("href", self.url);
-                break :linkBlk tmp;
+                break :linkBlk .{ .leaf = tmp };
             },
             .image => imgBlk: {
                 var tmp = try LeafNode.init(allocator, "img", "", true);
                 try tmp.props.put("src", self.url);
                 try tmp.props.put("alt", self.text);
-                break :imgBlk tmp;
+                break :imgBlk .{ .leaf = tmp };
             },
             // else => @panic("Not implemented"),
         };
@@ -100,7 +105,7 @@ test "code node" {
 
     const result = try node.toHtml(gpa);
     defer gpa.free(result);
-    try std.testing.expectEqualStrings("<code>just some code text</code>", result);
+    try std.testing.expectEqualStrings("<pre><code>just some code text</code></pre>", result);
 }
 
 test "link node" {

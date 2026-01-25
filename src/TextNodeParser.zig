@@ -169,7 +169,7 @@ pub const TextNodeParser = struct {
         return list.toOwnedSlice(allocator);
     }
 
-    pub fn extract(self: *TextNodeParser, allocator: std.mem.Allocator, textType: TextType) ![]struct { []const u8, []const u8 } {
+    fn extract(self: *TextNodeParser, allocator: std.mem.Allocator, textType: TextType) ![]struct { []const u8, []const u8 } {
         if (textType != .image and textType != .link) return error.NotSupported;
         const nodes = try self.parse(allocator);
         defer allocator.free(nodes);
