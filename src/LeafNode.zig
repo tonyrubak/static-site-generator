@@ -51,7 +51,13 @@ pub const LeafNode = struct {
 
         const propsString = try self.propsToHtml(allocator);
         defer allocator.free(propsString);
-        try writer.print("<{s}{s}>{s}</{s}>", .{ self.tag, propsString, self.value, self.tag });
+        if (self.tag.len > 0) {
+            try writer.print("<{s}{s}>", .{ self.tag, propsString });
+        }
+        try writer.print("{s}", .{self.value});
+        if (self.tag.len > 0) {
+            try writer.print("</{s}>", .{self.tag});
+        }
 
         return list.toOwnedSlice(allocator);
     }
