@@ -101,6 +101,21 @@ pub const MarkdownParser = struct {
         return list.toOwnedSlice(allocator);
     }
 
+    fn handleQuote(allocator: std.mem.Allocator, paragraph: []const u8) ![]const u8 {
+        var list = std.ArrayList(u8).empty;
+        try list.appendSlice(allocator, paragraph);
+        const slice = try list.toOwnedSlice(allocator);
+        defer allocator.free(slice);
+        std.mem.replaceScalar(u8, slice, '>', ' ');
+        std.mem.replaceScalar(u8, slice, '\n', ' ');
+        std.mem.replaceScalar(u8, slice, '\t', ' ');
+        const new_slice = std.mem.collapseRepeats(u8, slice, ' ');
+        const trimmed = std.mem.trim(u8, new_slice, " ");
+        var result = std.ArrayList(u8).empty;
+        try result.appendSlice(allocator, trimmed);
+        return result.toOwnedSlice(allocator);
+    }
+
     pub fn parse(self: MarkdownParser, allocator: std.mem.Allocator) !ParentNode {
         const blocks = try self.markdown_to_blocks(allocator);
         defer allocator.free(blocks);
@@ -120,6 +135,7 @@ pub const MarkdownParser = struct {
                 .code => try handleCode(allocator, block),
                 .paragraph => try handleParagraph(allocator, block),
                 .heading => try handleHeading(allocator, block),
+                .quote => try handleQuote(allocator, block),
                 else => block,
             };
 
@@ -127,6 +143,7 @@ pub const MarkdownParser = struct {
                 .code => true,
                 .paragraph => true,
                 .heading => true,
+                .quote => true,
                 else => false,
             };
 
@@ -148,14 +165,14 @@ pub const MarkdownParser = struct {
                         4 => "h4",
                         5 => "h5",
                         6 => "h6",
-                        else => "p",
+                        else => @panic("Unreachable"),
                     };
                 },
+                .quote => "blockquote",
                 else => "",
             };
 
             var childList = std.ArrayList(Node).empty;
-            defer childList.deinit(allocator);
             for (result) |child| {
                 const node: Node = .{ .leaf = try child.toNode(allocator) };
                 try childList.append(allocator, node);
@@ -174,6 +191,27 @@ pub const MarkdownParser = struct {
         return node;
     }
 };
+
+test "multi-line quote of doom" {
+    const gpa = std.testing.allocator;
+    const parser = MarkdownParser{
+        .document =
+        \\> This is
+        \\ a multiline quote
+        \\> that really
+        \\> hates
+        \\implementers
+        ,
+    };
+
+    var result = try parser.parse(gpa);
+    defer result.deinit(gpa);
+
+    const html = try result.toHtml(gpa);
+    defer gpa.free(html);
+
+    try std.testing.expectEqualStrings("<div><blockquote>This is a multiline quote that really hates implementers</blockquote></div>", html);
+}
 
 test "test heading" {
     const gpa = std.testing.allocator;
