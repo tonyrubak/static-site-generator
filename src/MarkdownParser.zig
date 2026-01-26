@@ -84,6 +84,7 @@ pub const MarkdownParser = struct {
 
     fn handleParagraph(allocator: std.mem.Allocator, paragraph: []const u8) ![]const u8 {
         var list = std.ArrayList(u8).empty;
+        errdefer list.deinit(allocator);
         try list.appendSlice(allocator, paragraph);
         std.mem.replaceScalar(u8, list.items, '\n', ' ');
         std.mem.replaceScalar(u8, list.items, '\t', ' ');
@@ -92,6 +93,7 @@ pub const MarkdownParser = struct {
 
     fn handleHeading(allocator: std.mem.Allocator, paragraph: []const u8) ![]const u8 {
         var list = std.ArrayList(u8).empty;
+        errdefer list.deinit(allocator);
         var count: usize = 0;
         while (paragraph[count] == '#') {
             count += 1;
@@ -103,6 +105,7 @@ pub const MarkdownParser = struct {
 
     fn handleQuote(allocator: std.mem.Allocator, paragraph: []const u8) ![]const u8 {
         var list = std.ArrayList(u8).empty;
+        errdefer list.deinit(allocator);
         try list.appendSlice(allocator, paragraph);
         const slice = try list.toOwnedSlice(allocator);
         defer allocator.free(slice);
@@ -149,6 +152,7 @@ pub const MarkdownParser = struct {
 
             var parser = try TextNodeParser.init(.{ .text = parsedBlock, .textType = textType, .url = "" });
             const result = try parser.parse(allocator);
+            defer allocator.free(result);
 
             const parentTag = switch (t) {
                 .paragraph => "p",
@@ -169,7 +173,8 @@ pub const MarkdownParser = struct {
                     };
                 },
                 .quote => "blockquote",
-                else => "",
+                .ordered_list => "ol",
+                .unordered_list => "ul",
             };
 
             var childList = std.ArrayList(Node).empty;
@@ -177,8 +182,6 @@ pub const MarkdownParser = struct {
                 const node: Node = .{ .leaf = try child.toNode(allocator) };
                 try childList.append(allocator, node);
             }
-
-            defer allocator.free(result);
 
             const parentNode = try ParentNode.init(allocator, parentTag, try childList.toOwnedSlice(allocator));
             try list.append(allocator, .{ .parent = parentNode });

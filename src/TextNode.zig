@@ -44,7 +44,6 @@ pub const TextNode = struct {
                 try tmp.props.put("alt", self.text);
                 break :imgBlk tmp;
             },
-            // else => @panic("Not implemented"),
         };
         defer node.deinit(allocator);
         const result = try node.toHtml(allocator);
@@ -71,7 +70,6 @@ pub const TextNode = struct {
                 try tmp.props.put("alt", self.text);
                 break :imgBlk tmp;
             },
-            // else => @panic("Not implemented"),
         };
         return node;
     }
