@@ -14,8 +14,8 @@ pub const LeafNode = struct {
         is_void: bool,
     ) !LeafNode {
         const self = LeafNode{
-            .tag = tag,
-            .value = value,
+            .tag = try allocator.dupe(u8, tag),
+            .value = try allocator.dupe(u8, value),
             .props = std.StringHashMap([]const u8).init(allocator),
             .is_void = is_void,
         };
@@ -23,7 +23,9 @@ pub const LeafNode = struct {
         return self;
     }
 
-    pub fn deinit(self: *LeafNode) void {
+    pub fn deinit(self: *LeafNode, allocator: std.mem.Allocator) void {
+        allocator.free(self.tag);
+        allocator.free(self.value);
         self.props.deinit();
     }
 
@@ -73,7 +75,7 @@ pub const LeafNode = struct {
 test "test leaf node with no properties" {
     const gpa = std.testing.allocator;
     var node = try LeafNode.init(gpa, "p", "Hello, world!", false);
-    defer node.deinit();
+    defer node.deinit(gpa);
 
     const result = try node.toHtml(gpa);
     defer gpa.free(result);
@@ -83,7 +85,7 @@ test "test leaf node with no properties" {
 test "test leaf node with 1 property" {
     const gpa = std.testing.allocator;
     var node = try LeafNode.init(gpa, "h1", "Hello, world!", false);
-    defer node.deinit();
+    defer node.deinit(gpa);
 
     try node.props.put("class", "text-danger");
 
@@ -95,7 +97,7 @@ test "test leaf node with 1 property" {
 test "test leaf node with 2 properties" {
     const gpa = std.testing.allocator;
     var node = try LeafNode.init(gpa, "h1", "Hello, world!", false);
-    defer node.deinit();
+    defer node.deinit(gpa);
 
     try node.props.put("class", "text-danger");
     try node.props.put("other", "another-property");
@@ -108,7 +110,7 @@ test "test leaf node with 2 properties" {
 test "test void leaf node with value should error" {
     const gpa = std.testing.allocator;
     var node = try LeafNode.init(gpa, "img", "Hello, world!", true);
-    defer node.deinit();
+    defer node.deinit(gpa);
 
     const result = node.toHtml(gpa);
     try std.testing.expectError(NodeError.VoidElementHasContent, result);

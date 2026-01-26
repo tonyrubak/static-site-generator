@@ -4,16 +4,16 @@ const NodeError = @import("Node.zig").NodeError;
 
 pub const ParentNode = struct {
     tag: []const u8,
-    children: []const Node,
+    children: []Node,
     props: std.StringHashMap([]const u8),
 
     pub fn init(
         allocator: std.mem.Allocator,
         tag: []const u8,
-        children: []const Node,
+        children: []Node,
     ) !ParentNode {
         const self = ParentNode{
-            .tag = tag,
+            .tag = try allocator.dupe(u8, tag),
             .children = children,
             .props = std.StringHashMap([]const u8).init(allocator),
         };
@@ -21,7 +21,26 @@ pub const ParentNode = struct {
         return self;
     }
 
-    pub fn deinit(self: *ParentNode) void {
+    pub fn initBorrowed(
+        allocator: std.mem.Allocator,
+        tag: []const u8,
+        children: []const Node,
+    ) !ParentNode {
+        const self = ParentNode{
+            .tag = try allocator.dupe(u8, tag),
+            .children = try allocator.dupe(Node, children),
+            .props = std.StringHashMap([]const u8).init(allocator),
+        };
+
+        return self;
+    }
+
+    pub fn deinit(self: *ParentNode, allocator: std.mem.Allocator) void {
+        for (self.children) |*child| {
+            child.deinit(allocator);
+        }
+        allocator.free(self.children);
+        allocator.free(self.tag);
         self.props.deinit();
     }
 
@@ -73,7 +92,7 @@ pub const ParentNode = struct {
 test "test parent node with zero children" {
     const gpa = std.testing.allocator;
     var parentNode = try ParentNode.init(gpa, "div", &.{});
-    defer parentNode.deinit();
+    defer parentNode.deinit(gpa);
 
     const result = parentNode.toHtml(gpa);
     try std.testing.expectError(NodeError.MustHaveChildren, result);
@@ -82,11 +101,10 @@ test "test parent node with zero children" {
 test "test parent node with one child" {
     const LeafNode = @import("LeafNode.zig").LeafNode;
     const gpa = std.testing.allocator;
-    var childNode = try LeafNode.init(gpa, "p", "Hello, world!", false);
-    defer childNode.deinit();
+    const childNode = try LeafNode.init(gpa, "p", "Hello, world!", false);
 
-    var parentNode = try ParentNode.init(gpa, "div", &[_]Node{.{ .leaf = childNode }});
-    defer parentNode.deinit();
+    var parentNode = try ParentNode.initBorrowed(gpa, "div", &[_]Node{.{ .leaf = childNode }});
+    defer parentNode.deinit(gpa);
 
     const result = try parentNode.toHtml(gpa);
     defer gpa.free(result);
@@ -96,14 +114,12 @@ test "test parent node with one child" {
 test "test parent node with one grandchild" {
     const LeafNode = @import("LeafNode.zig").LeafNode;
     const gpa = std.testing.allocator;
-    var childNode = try LeafNode.init(gpa, "p", "Hello, world!", false);
-    defer childNode.deinit();
+    const childNode = try LeafNode.init(gpa, "p", "Hello, world!", false);
 
-    var parentNode = try ParentNode.init(gpa, "div", &[_]Node{.{ .leaf = childNode }});
-    defer parentNode.deinit();
+    const parentNode = try ParentNode.initBorrowed(gpa, "div", &[_]Node{.{ .leaf = childNode }});
 
-    var grandparentNode = try ParentNode.init(gpa, "span", &[_]Node{.{ .parent = parentNode }});
-    defer grandparentNode.deinit();
+    var grandparentNode = try ParentNode.initBorrowed(gpa, "span", &[_]Node{.{ .parent = parentNode }});
+    defer grandparentNode.deinit(gpa);
 
     const result = try grandparentNode.toHtml(gpa);
     defer gpa.free(result);
@@ -113,14 +129,12 @@ test "test parent node with one grandchild" {
 test "test parent node with two children" {
     const LeafNode = @import("LeafNode.zig").LeafNode;
     const gpa = std.testing.allocator;
-    var childNode = try LeafNode.init(gpa, "p", "Hello, world!", false);
-    defer childNode.deinit();
+    const childNode = try LeafNode.init(gpa, "p", "Hello, world!", false);
 
-    var childNode2 = try LeafNode.init(gpa, "h1", "Goodbye, world!", false);
-    defer childNode2.deinit();
+    const childNode2 = try LeafNode.init(gpa, "h1", "Goodbye, world!", false);
 
-    var parentNode = try ParentNode.init(gpa, "div", &[_]Node{ .{ .leaf = childNode }, .{ .leaf = childNode2 } });
-    defer parentNode.deinit();
+    var parentNode = try ParentNode.initBorrowed(gpa, "div", &[_]Node{ .{ .leaf = childNode }, .{ .leaf = childNode2 } });
+    defer parentNode.deinit(gpa);
 
     const result = try parentNode.toHtml(gpa);
     defer gpa.free(result);

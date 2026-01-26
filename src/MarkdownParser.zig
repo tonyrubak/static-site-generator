@@ -1,4 +1,5 @@
 const std = @import("std");
+const LeafNode = @import("LeafNode.zig").LeafNode;
 const Node = @import("Node.zig").Node;
 const ParentNode = @import("ParentNode.zig").ParentNode;
 const TextNodeParser = @import("TextNodeParser.zig").TextNodeParser;
@@ -72,11 +73,39 @@ pub const MarkdownParser = struct {
         return .paragraph;
     }
 
-    pub fn parse(self: MarkdownParser, allocator: std.mem.Allocator) ![]const u8 {
+    fn handleCode(allocator: std.mem.Allocator, codeBlock: []const u8) ![]const u8 {
+        var list = std.ArrayList(u8).empty;
+        errdefer list.deinit(allocator);
+
+        const len = codeBlock.len;
+        try list.appendSlice(allocator, codeBlock[4 .. len - 3]);
+        return list.toOwnedSlice(allocator);
+    }
+
+    fn handleParagraph(allocator: std.mem.Allocator, paragraph: []const u8) ![]const u8 {
+        var list = std.ArrayList(u8).empty;
+        try list.appendSlice(allocator, paragraph);
+        std.mem.replaceScalar(u8, list.items, '\n', ' ');
+        std.mem.replaceScalar(u8, list.items, '\t', ' ');
+        return list.toOwnedSlice(allocator);
+    }
+
+    fn handleHeading(allocator: std.mem.Allocator, paragraph: []const u8) ![]const u8 {
+        var list = std.ArrayList(u8).empty;
+        var count: usize = 0;
+        while (paragraph[count] == '#') {
+            count += 1;
+        }
+        try list.appendSlice(allocator, paragraph[count + 1 ..]);
+        std.mem.replaceScalar(u8, list.items, '\t', ' ');
+        return list.toOwnedSlice(allocator);
+    }
+
+    pub fn parse(self: MarkdownParser, allocator: std.mem.Allocator) !ParentNode {
         const blocks = try self.markdown_to_blocks(allocator);
         defer allocator.free(blocks);
 
-        var list = std.ArrayList(u8).empty;
+        var list = std.ArrayList(Node).empty;
         errdefer list.deinit(allocator);
 
         for (blocks) |block| {
@@ -86,19 +115,102 @@ pub const MarkdownParser = struct {
                 .code => .code,
                 else => .text,
             };
-            var parser = try TextNodeParser.init(.{ .text = block, .textType = textType, .url = "" });
+
+            const parsedBlock = switch (t) {
+                .code => try handleCode(allocator, block),
+                .paragraph => try handleParagraph(allocator, block),
+                .heading => try handleHeading(allocator, block),
+                else => block,
+            };
+
+            const mustFree = switch (t) {
+                .code => true,
+                .paragraph => true,
+                .heading => true,
+                else => false,
+            };
+
+            var parser = try TextNodeParser.init(.{ .text = parsedBlock, .textType = textType, .url = "" });
             const result = try parser.parse(allocator);
-            defer allocator.free(result);
-            for (result) |res| {
-                const html = try res.toHtml(allocator);
-                defer allocator.free(html);
-                try list.appendSlice(allocator, html);
+
+            const parentTag = switch (t) {
+                .paragraph => "p",
+                .code => "pre",
+                .heading => headingBlk: {
+                    var count: usize = 0;
+                    while (block[count] == '#') {
+                        count += 1;
+                    }
+                    break :headingBlk switch (count) {
+                        1 => "h1",
+                        2 => "h2",
+                        3 => "h3",
+                        4 => "h4",
+                        5 => "h5",
+                        6 => "h6",
+                        else => "p",
+                    };
+                },
+                else => "",
+            };
+
+            var childList = std.ArrayList(Node).empty;
+            defer childList.deinit(allocator);
+            for (result) |child| {
+                const node: Node = .{ .leaf = try child.toNode(allocator) };
+                try childList.append(allocator, node);
             }
+
+            defer allocator.free(result);
+
+            const parentNode = try ParentNode.init(allocator, parentTag, try childList.toOwnedSlice(allocator));
+            try list.append(allocator, .{ .parent = parentNode });
+
+            if (mustFree) allocator.free(parsedBlock);
         }
 
-        return list.toOwnedSlice(allocator);
+        const node = try ParentNode.init(allocator, "div", try list.toOwnedSlice(allocator));
+
+        return node;
     }
 };
+
+test "test heading" {
+    const gpa = std.testing.allocator;
+    const parser = MarkdownParser{
+        .document = "### This is a heading",
+    };
+
+    var result = try parser.parse(gpa);
+    defer result.deinit(gpa);
+
+    const html = try result.toHtml(gpa);
+    defer gpa.free(html);
+
+    try std.testing.expectEqualStrings("<div><h3>This is a heading</h3></div>", html);
+}
+
+test "test paragraphs" {
+    const gpa = std.testing.allocator;
+    const parser = MarkdownParser{
+        .document =
+        \\This is **bolded** paragraph
+        \\text in a p
+        \\tag here
+        \\
+        \\This is another paragraph with _italic_ text and `code` here
+        \\
+        ,
+    };
+
+    var result = try parser.parse(gpa);
+    defer result.deinit(gpa);
+
+    const html = try result.toHtml(gpa);
+    defer gpa.free(html);
+
+    try std.testing.expectEqualStrings("<div><p>This is <b>bolded</b> paragraph text in a p tag here</p><p>This is another paragraph with <i>italic</i> text and <code>code</code> here</p></div>", html);
+}
 
 test "test codeblock" {
     const gpa = std.testing.allocator;
@@ -111,10 +223,13 @@ test "test codeblock" {
         ,
     };
 
-    const result = try parser.parse(gpa);
-    defer gpa.free(result);
+    var result = try parser.parse(gpa);
+    defer result.deinit(gpa);
 
-    try std.testing.expect(true);
+    const html = try result.toHtml(gpa);
+    defer gpa.free(html);
+
+    try std.testing.expectEqualStrings("<div><pre><code>This is text that _should_ remain\nthe **same** even with inline stuff\n</code></pre></div>", html);
 }
 
 test "one 1 list" {

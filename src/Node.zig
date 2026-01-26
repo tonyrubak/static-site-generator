@@ -16,9 +16,10 @@ pub const Node = union(enum) {
         };
     }
 
-    pub fn deinit(self: *Node) void {
+    pub fn deinit(self: *Node, allocator: std.mem.Allocator) void {
         return switch (self.*) {
-            .leaf => |*leaf| leaf.deinit(),
+            .leaf => |*leaf| leaf.deinit(allocator),
+            .parent => |*parent| parent.deinit(allocator),
             else => {},
         };
     }
