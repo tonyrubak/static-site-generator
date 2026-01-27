@@ -14,6 +14,23 @@ pub const BlockType = enum {
     ordered_list,
 };
 
+const BlockResult = union(enum) {
+    single: []const u8,
+    list: [][]const u8,
+
+    pub fn deinit(self: BlockResult, allocator: std.mem.Allocator) void {
+        switch (self) {
+            .single => |s| allocator.free(s),
+            .list => |items| {
+                for (items) |item| {
+                    allocator.free(item);
+                }
+                allocator.free(items);
+            },
+        }
+    }
+};
+
 pub const MarkdownParser = struct {
     document: []const u8,
 
@@ -73,25 +90,25 @@ pub const MarkdownParser = struct {
         return .paragraph;
     }
 
-    fn handleCode(allocator: std.mem.Allocator, codeBlock: []const u8) ![]const u8 {
+    fn handleCode(allocator: std.mem.Allocator, codeBlock: []const u8) !BlockResult {
         var list = std.ArrayList(u8).empty;
         errdefer list.deinit(allocator);
 
         const len = codeBlock.len;
         try list.appendSlice(allocator, codeBlock[4 .. len - 3]);
-        return list.toOwnedSlice(allocator);
+        return .{ .single = try list.toOwnedSlice(allocator) };
     }
 
-    fn handleParagraph(allocator: std.mem.Allocator, paragraph: []const u8) ![]const u8 {
+    fn handleParagraph(allocator: std.mem.Allocator, paragraph: []const u8) !BlockResult {
         var list = std.ArrayList(u8).empty;
         errdefer list.deinit(allocator);
         try list.appendSlice(allocator, paragraph);
         std.mem.replaceScalar(u8, list.items, '\n', ' ');
         std.mem.replaceScalar(u8, list.items, '\t', ' ');
-        return list.toOwnedSlice(allocator);
+        return .{ .single = try list.toOwnedSlice(allocator) };
     }
 
-    fn handleHeading(allocator: std.mem.Allocator, paragraph: []const u8) ![]const u8 {
+    fn handleHeading(allocator: std.mem.Allocator, paragraph: []const u8) !BlockResult {
         var list = std.ArrayList(u8).empty;
         errdefer list.deinit(allocator);
         var count: usize = 0;
@@ -100,10 +117,10 @@ pub const MarkdownParser = struct {
         }
         try list.appendSlice(allocator, paragraph[count + 1 ..]);
         std.mem.replaceScalar(u8, list.items, '\t', ' ');
-        return list.toOwnedSlice(allocator);
+        return .{ .single = try list.toOwnedSlice(allocator) };
     }
 
-    fn handleQuote(allocator: std.mem.Allocator, paragraph: []const u8) ![]const u8 {
+    fn handleQuote(allocator: std.mem.Allocator, paragraph: []const u8) !BlockResult {
         var list = std.ArrayList(u8).empty;
         errdefer list.deinit(allocator);
         try list.appendSlice(allocator, paragraph);
@@ -116,7 +133,23 @@ pub const MarkdownParser = struct {
         const trimmed = std.mem.trim(u8, new_slice, " ");
         var result = std.ArrayList(u8).empty;
         try result.appendSlice(allocator, trimmed);
-        return result.toOwnedSlice(allocator);
+        return .{ .single = try result.toOwnedSlice(allocator) };
+    }
+
+    fn handleList(allocator: std.mem.Allocator, paragraph: []const u8) !BlockResult {
+        var linesResult = std.ArrayList([]const u8).empty;
+        errdefer linesResult.deinit(allocator);
+
+        var linesIterator = std.mem.splitAny(u8, paragraph, "\n");
+
+        while (linesIterator.next()) |line| {
+            const toTrim = std.mem.indexOf(u8, line, " ") orelse @panic("Unordered list with no space");
+            const result = try allocator.alloc(u8, line.len - toTrim - 1);
+            std.mem.copyForwards(u8, result, line[toTrim + 1 ..]);
+            try linesResult.append(allocator, result);
+        }
+
+        return .{ .list = try linesResult.toOwnedSlice(allocator) };
     }
 
     pub fn parse(self: MarkdownParser, allocator: std.mem.Allocator) !ParentNode {
@@ -139,20 +172,8 @@ pub const MarkdownParser = struct {
                 .paragraph => try handleParagraph(allocator, block),
                 .heading => try handleHeading(allocator, block),
                 .quote => try handleQuote(allocator, block),
-                else => block,
+                .ordered_list, .unordered_list => try handleList(allocator, block),
             };
-
-            const mustFree = switch (t) {
-                .code => true,
-                .paragraph => true,
-                .heading => true,
-                .quote => true,
-                else => false,
-            };
-
-            var parser = try TextNodeParser.init(.{ .text = parsedBlock, .textType = textType, .url = "" });
-            const result = try parser.parse(allocator);
-            defer allocator.free(result);
 
             const parentTag = switch (t) {
                 .paragraph => "p",
@@ -177,16 +198,45 @@ pub const MarkdownParser = struct {
                 .unordered_list => "ul",
             };
 
+            const innerTag = switch(t) {
+                .ordered_list, .unordered_list => "li",
+                else => ""
+            };
+
+
             var childList = std.ArrayList(Node).empty;
-            for (result) |child| {
-                const node: Node = .{ .leaf = try child.toNode(allocator) };
-                try childList.append(allocator, node);
+
+            switch (parsedBlock) {
+                .single => |singleBlock| {
+                    var parser = try TextNodeParser.init(.{ .text = singleBlock, .textType = textType, .url = "" });
+                    const result = try parser.parse(allocator);
+                    defer allocator.free(result);
+                    for (result) |child| {
+                        const node: Node = .{ .leaf = try child.toNode(allocator) };
+                        try childList.append(allocator, node);
+                    }
+                },
+                .list => |listBlock| {
+                    for (listBlock) |item| {
+                        var innerChildList = std.ArrayList(Node).empty;
+                        var parser = try TextNodeParser.init(.{ .text = item, .textType = textType, .url = "" });
+                        const result = try parser.parse(allocator);
+                        defer allocator.free(result);
+                        for (result) |child| {
+                            const node: Node = .{ .leaf = try child.toNode(allocator) };
+                            try innerChildList.append(allocator, node);
+                        }
+                        const parent: Node = . { .parent = try ParentNode.init(allocator, innerTag, try innerChildList.toOwnedSlice(allocator)) };
+                        try childList.append(allocator, parent);
+                    }
+                },
             }
+
 
             const parentNode = try ParentNode.init(allocator, parentTag, try childList.toOwnedSlice(allocator));
             try list.append(allocator, .{ .parent = parentNode });
 
-            if (mustFree) allocator.free(parsedBlock);
+            parsedBlock.deinit(allocator);
         }
 
         const node = try ParentNode.init(allocator, "div", try list.toOwnedSlice(allocator));
@@ -194,6 +244,44 @@ pub const MarkdownParser = struct {
         return node;
     }
 };
+
+test "three * list" {
+    const gpa = std.testing.allocator;
+    const parser = MarkdownParser{
+        .document =
+        \\- list item
+        \\- list item
+        \\- list item
+        ,
+    };
+
+    var result = try parser.parse(gpa);
+    defer result.deinit(gpa);
+
+    const html = try result.toHtml(gpa);
+    defer gpa.free(html);
+
+    try std.testing.expectEqualStrings("<div><ul><li>list item</li><li>list item</li><li>list item</li></ul></div>", html);
+}
+
+test "three 1 list" {
+    const gpa = std.testing.allocator;
+    const parser = MarkdownParser{
+        .document =
+        \\1. list item
+        \\2. list item
+        \\3. list item
+        ,
+    };
+
+    var result = try parser.parse(gpa);
+    defer result.deinit(gpa);
+
+    const html = try result.toHtml(gpa);
+    defer gpa.free(html);
+
+    try std.testing.expectEqualStrings("<div><ol><li>list item</li><li>list item</li><li>list item</li></ol></div>", html);
+}
 
 test "multi-line quote of doom" {
     const gpa = std.testing.allocator;
