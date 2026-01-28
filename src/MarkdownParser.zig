@@ -221,7 +221,7 @@ pub const MarkdownParser = struct {
                             const node: Node = .{ .leaf = try child.toNode(allocator) };
                             try innerChildList.append(allocator, node);
                         }
-                        const parent: Node = . { .parent = try ParentNode.init(allocator, "li", try innerChildList.toOwnedSlice(allocator)) };
+                        const parent: Node = .{ .parent = try ParentNode.init(allocator, "li", try innerChildList.toOwnedSlice(allocator)) };
                         try childList.append(allocator, parent);
                     }
                 },
@@ -234,7 +234,72 @@ pub const MarkdownParser = struct {
 
         return node;
     }
+
+    pub fn extract_title(self: MarkdownParser, allocator: std.mem.Allocator) ![]const u8 {
+        var it = std.mem.splitScalar(u8, self.document, '\n');
+        const header = it.next() orelse return error.MustHaveLines;
+        if (!std.mem.startsWith(u8, header, "# ")) {
+            return error.MustHaveHeader;
+        }
+        const trimmed = std.mem.trim(u8, header[1..], " \t");
+        return allocator.dupe(u8, trimmed);
+    }
 };
+
+test "the index" {
+    const gpa = std.testing.allocator;
+
+    var wd = try std.fs.cwd().openDir("content/", .{});
+    defer wd.close();
+
+    const file = try wd.openFile("index.md", .{});
+    defer file.close();
+
+    const length = try file.getEndPos();
+    var read_buffer: [1024]u8 = undefined;
+    var f_reader = file.reader(&read_buffer);
+    var reader = &f_reader.interface;
+
+    const document = try reader.readAlloc(gpa, length);
+    defer gpa.free(document);
+    var parser = MarkdownParser{ .document = document };
+    const title = try parser.extract_title(gpa);
+    defer gpa.free(title);
+
+    try std.testing.expectEqualStrings("Tolkien Fan Club", title);
+}
+
+test "get title - but no document" {
+    const gpa = std.testing.allocator;
+
+    const document = "";
+    var parser = MarkdownParser{ .document = document };
+    const title = parser.extract_title(gpa);
+
+    try std.testing.expectError(error.MustHaveHeader, title);
+}
+
+test "get title - but no title" {
+    const gpa = std.testing.allocator;
+
+    var wd = try std.fs.cwd().openDir("content/", .{});
+    defer wd.close();
+
+    const file = try wd.openFile("index.md", .{});
+    defer file.close();
+
+    const length = try file.getEndPos();
+    var read_buffer: [1024]u8 = undefined;
+    var f_reader = file.reader(&read_buffer);
+    var reader = &f_reader.interface;
+
+    const document = try reader.readAlloc(gpa, length);
+    defer gpa.free(document);
+    var parser = MarkdownParser{ .document = document[2..] };
+    const title = parser.extract_title(gpa);
+
+    try std.testing.expectError(error.MustHaveHeader, title);
+}
 
 test "three * list" {
     const gpa = std.testing.allocator;

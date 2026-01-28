@@ -35,13 +35,13 @@ pub const TextNode = struct {
             .code => try LeafNode.init(allocator, "code", self.text, false),
             .link => linkBlk: {
                 var tmp = try LeafNode.init(allocator, "a", self.text, false);
-                try tmp.props.put("href", self.url);
+                try tmp.props.put("href", try allocator.dupe(u8, self.url));
                 break :linkBlk tmp;
             },
             .image => imgBlk: {
                 var tmp = try LeafNode.init(allocator, "img", "", true);
-                try tmp.props.put("src", self.url);
-                try tmp.props.put("alt", self.text);
+                try tmp.props.put("src", try allocator.dupe(u8, self.url));
+                try tmp.props.put("alt", try allocator.dupe(u8, self.text));
                 break :imgBlk tmp;
             },
         };
@@ -61,13 +61,13 @@ pub const TextNode = struct {
             .code => try LeafNode.init(allocator, "code", self.text, false),
             .link => linkBlk: {
                 var tmp = try LeafNode.init(allocator, "a", self.text, false);
-                try tmp.props.put("href", self.url);
+                try tmp.props.put("href", try allocator.dupe(u8, self.url));
                 break :linkBlk tmp;
             },
             .image => imgBlk: {
                 var tmp = try LeafNode.init(allocator, "img", "", true);
-                try tmp.props.put("src", self.url);
-                try tmp.props.put("alt", self.text);
+                try tmp.props.put("src", try allocator.dupe(u8, self.url));
+                try tmp.props.put("alt", try allocator.dupe(u8, self.text));
                 break :imgBlk tmp;
             },
         };

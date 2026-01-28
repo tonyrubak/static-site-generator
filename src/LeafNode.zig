@@ -24,6 +24,10 @@ pub const LeafNode = struct {
     }
 
     pub fn deinit(self: *LeafNode, allocator: std.mem.Allocator) void {
+        var it = self.props.iterator();
+        while (it.next()) |entry| {
+            allocator.free(entry.value_ptr.*);
+        }
         allocator.free(self.tag);
         allocator.free(self.value);
         self.props.deinit();
@@ -87,7 +91,7 @@ test "test leaf node with 1 property" {
     var node = try LeafNode.init(gpa, "h1", "Hello, world!", false);
     defer node.deinit(gpa);
 
-    try node.props.put("class", "text-danger");
+    try node.props.put("class", try gpa.dupe(u8, "text-danger"));
 
     const result = try node.toHtml(gpa);
     defer gpa.free(result);
@@ -95,12 +99,12 @@ test "test leaf node with 1 property" {
 }
 
 test "test leaf node with 2 properties" {
-    const gpa = std.testing.allocator;
+    const gpa = std.heap.page_allocator;
     var node = try LeafNode.init(gpa, "h1", "Hello, world!", false);
     defer node.deinit(gpa);
 
-    try node.props.put("class", "text-danger");
-    try node.props.put("other", "another-property");
+    try node.props.put("class", try gpa.dupe(u8, "text-danger"));
+    try node.props.put("other", try gpa.dupe(u8, "another-property"));
 
     const result = try node.toHtml(gpa);
     defer gpa.free(result);
