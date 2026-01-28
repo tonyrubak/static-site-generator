@@ -9,15 +9,18 @@ const MarkdownParser = ssg.MarkdownParser;
 
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
-    try clear_dir("public");
-    try copy_tree(allocator, "static", "public");
+    var args = std.process.args();
+    _ = args.skip();
+    const base_dir = args.next() orelse "/";
+    try clear_dir("docs");
+    try copy_tree(allocator, "static", "docs");
     var content_dir = try std.fs.cwd().openDir("content/", .{ .iterate = true });
     defer content_dir.close();
 
-    try build_tree(allocator, "content/", "template.html", "public/");
+    try build_tree(allocator, "content/", "template.html", "docs/", base_dir);
 }
 
-fn generate_page(allocator: std.mem.Allocator, src_path: []const u8, template_path: []const u8, dest_path: []const u8) !void {
+fn generate_page(allocator: std.mem.Allocator, src_path: []const u8, template_path: []const u8, dest_path: []const u8, base_dir: []const u8) !void {
     std.debug.print("Generating page from {s} to {s} using {s}\n", .{ src_path, dest_path, template_path });
     var wd = try std.fs.cwd().openDir(".", .{});
     defer wd.close();
@@ -64,19 +67,29 @@ fn generate_page(allocator: std.mem.Allocator, src_path: []const u8, template_pa
     };
 
     var output = std.ArrayList(u8).empty;
-    defer output.deinit(allocator);
     try output.appendSlice(allocator, template[0..title_location]);
     try output.appendSlice(allocator, title);
     try output.appendSlice(allocator, template[title_location + 11 .. content_location]);
     try output.appendSlice(allocator, html);
     try output.appendSlice(allocator, template[content_location + 13 ..]);
+    const buffer = try output.toOwnedSlice(allocator);
+    defer allocator.free(buffer);
+
+    const href = try std.mem.concat(allocator, u8, &[_][]const u8{ "href=", base_dir });
+    defer allocator.free(href);
+    const a_size = std.mem.replacementSize(u8, buffer, "href=/", href) - buffer.len;
+    const size = std.mem.replacementSize(u8, buffer, "src=/", href) + a_size;
+    const output_buffer = try allocator.alloc(u8, size);
+    defer allocator.free(output_buffer);
+    _ = std.mem.replace(u8, buffer, "href=/", href, output_buffer);
+    _ = std.mem.replace(u8, buffer, "src=/", href, output_buffer);
 
     const output_file_path = std.fs.path.dirname(dest_path);
     if (output_file_path) |path| try wd.makePath(path);
 
     const output_file = try wd.createFile(dest_path, .{});
     defer output_file.close();
-    try output_file.writeAll(output.items);
+    try output_file.writeAll(output_buffer);
 }
 
 fn clear_dir(path: []const u8) !void {
@@ -122,7 +135,7 @@ fn copy_tree(allocator: std.mem.Allocator, in_path: []const u8, out_path: []cons
     }
 }
 
-fn build_tree(allocator: std.mem.Allocator, in_path: []const u8, template_path: []const u8, out_path: []const u8) !void {
+fn build_tree(allocator: std.mem.Allocator, in_path: []const u8, template_path: []const u8, out_path: []const u8, base_dir: []const u8) !void {
     const cwd = std.fs.cwd();
     var out_dir = cwd.openDir(out_path, .{ .iterate = true }) catch {
         std.debug.print("Destination directory must exist\n", .{});
@@ -145,7 +158,7 @@ fn build_tree(allocator: std.mem.Allocator, in_path: []const u8, template_path: 
                 defer allocator.free(src_path);
                 defer allocator.free(dest_path);
                 try out_dir.makeDir(item.name);
-                try build_tree(allocator, src_path, template_path, dest_path);
+                try build_tree(allocator, src_path, template_path, dest_path, base_dir);
             },
             .file => {
                 if (std.mem.eql(u8, std.fs.path.extension(item.name), ".md")) {
@@ -156,7 +169,7 @@ fn build_tree(allocator: std.mem.Allocator, in_path: []const u8, template_path: 
                     const dest_path = try std.fs.path.join(allocator, &[_][]const u8{ out_path, out_name });
                     defer allocator.free(src_path);
                     defer allocator.free(dest_path);
-                    try generate_page(allocator, src_path, template_path, dest_path);
+                    try generate_page(allocator, src_path, template_path, dest_path, base_dir);
                 }
             },
             else => {},

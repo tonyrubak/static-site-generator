@@ -1,5 +1,4 @@
 __pycache__/
-public/
 .zig-cache/
 zig-out/
 /release/
