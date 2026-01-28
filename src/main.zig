@@ -77,19 +77,23 @@ fn generate_page(allocator: std.mem.Allocator, src_path: []const u8, template_pa
 
     const href = try std.mem.concat(allocator, u8, &[_][]const u8{ "href=", base_dir });
     defer allocator.free(href);
-    const a_size = std.mem.replacementSize(u8, buffer, "href=/", href) - buffer.len;
-    const size = std.mem.replacementSize(u8, buffer, "src=/", href) + a_size;
-    const output_buffer = try allocator.alloc(u8, size);
-    defer allocator.free(output_buffer);
-    _ = std.mem.replace(u8, buffer, "href=/", href, output_buffer);
-    _ = std.mem.replace(u8, buffer, "src=/", href, output_buffer);
+    const a_size = std.mem.replacementSize(u8, buffer, "href=/", href);
+    const a_buffer = try allocator.alloc(u8, a_size);
+    defer allocator.free(a_buffer);
+    _ = std.mem.replace(u8, buffer, "href=/", href, a_buffer);
+    const src = try std.mem.concat(allocator, u8, &[_][]const u8{ "src=", base_dir });
+    defer allocator.free(src);
+    const src_size = std.mem.replacementSize(u8, a_buffer, "src=/", src);
+    const src_buffer = try allocator.alloc(u8, src_size);
+    defer allocator.free(src_buffer);
+    _ = std.mem.replace(u8, a_buffer, "src=/", href, src_buffer);
 
     const output_file_path = std.fs.path.dirname(dest_path);
     if (output_file_path) |path| try wd.makePath(path);
 
     const output_file = try wd.createFile(dest_path, .{});
     defer output_file.close();
-    try output_file.writeAll(output_buffer);
+    try output_file.writeAll(src_buffer);
 }
 
 fn clear_dir(path: []const u8) !void {
