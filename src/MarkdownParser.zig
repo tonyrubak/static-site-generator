@@ -121,19 +121,15 @@ pub const MarkdownParser = struct {
     }
 
     fn handleQuote(allocator: std.mem.Allocator, paragraph: []const u8) !BlockResult {
-        var list = std.ArrayList(u8).empty;
-        errdefer list.deinit(allocator);
-        try list.appendSlice(allocator, paragraph);
-        const slice = try list.toOwnedSlice(allocator);
+        const slice = try allocator.dupe(u8, paragraph);
         defer allocator.free(slice);
         std.mem.replaceScalar(u8, slice, '>', ' ');
         std.mem.replaceScalar(u8, slice, '\n', ' ');
         std.mem.replaceScalar(u8, slice, '\t', ' ');
         const new_slice = std.mem.collapseRepeats(u8, slice, ' ');
         const trimmed = std.mem.trim(u8, new_slice, " ");
-        var result = std.ArrayList(u8).empty;
-        try result.appendSlice(allocator, trimmed);
-        return .{ .single = try result.toOwnedSlice(allocator) };
+        const result = try allocator.dupe(u8, trimmed);
+        return .{ .single = result };
     }
 
     fn handleList(allocator: std.mem.Allocator, paragraph: []const u8) !BlockResult {

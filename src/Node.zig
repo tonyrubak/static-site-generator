@@ -1,10 +1,8 @@
 const std = @import("std");
-const HtmlNode = @import("HtmlNode.zig").HtmlNode;
 const LeafNode = @import("LeafNode.zig").LeafNode;
 const ParentNode = @import("ParentNode.zig").ParentNode;
 
 pub const Node = union(enum) {
-    html: HtmlNode,
     leaf: LeafNode,
     parent: ParentNode,
 
@@ -12,7 +10,6 @@ pub const Node = union(enum) {
         return switch (self) {
             .leaf => |leaf| try leaf.toHtml(allocator),
             .parent => |parent| try parent.toHtml(allocator),
-            .html => @panic("HTML nodes are abstract and cannot be converted to HTML"),
         };
     }
 
@@ -20,7 +17,6 @@ pub const Node = union(enum) {
         return switch (self.*) {
             .leaf => |*leaf| leaf.deinit(allocator),
             .parent => |*parent| parent.deinit(allocator),
-            else => {},
         };
     }
 };
