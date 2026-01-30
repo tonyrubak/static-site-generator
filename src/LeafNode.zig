@@ -68,7 +68,7 @@ pub const LeafNode = struct {
             try writer.print("<{s}{s}>", .{ self.tag, propsString });
         }
         try writer.print("{s}", .{self.value});
-        if (self.tag.len > 0) {
+        if (self.tag.len > 0 and !self.is_void) {
             try writer.print("</{s}>", .{self.tag});
         }
 
