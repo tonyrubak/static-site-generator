@@ -209,15 +209,14 @@ pub const MarkdownParser = struct {
                 },
                 .list => |listBlock| {
                     for (listBlock) |item| {
-                        var innerChildList = std.ArrayList(Node).empty;
                         var parser = try TextNodeParser.init(.{ .text = item, .textType = textType, .url = "" });
                         const result = try parser.parse(allocator);
                         defer allocator.free(result);
-                        for (result) |child| {
-                            const node: Node = .{ .leaf = try child.toNode(allocator) };
-                            try innerChildList.append(allocator, node);
+                        const innerChildSlice = try allocator.alloc(Node, result.len);
+                        for (result, 0..) |child, i| {
+                            innerChildSlice[i] = .{ .leaf = try child.toNode(allocator) };
                         }
-                        const parent: Node = .{ .parent = try ParentNode.init(allocator, "li", try innerChildList.toOwnedSlice(allocator)) };
+                        const parent: Node = .{ .parent = try ParentNode.init(allocator, "li", innerChildSlice) };
                         try childList.append(allocator, parent);
                     }
                 },
